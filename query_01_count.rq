@@ -1,0 +1,20 @@
+PREFIX dcterms: <http://purl.org/dc/terms/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+PREFIX source: <http://rdf.ncbi.nlm.nih.gov/pubchem/source/>
+PREFIX cheminf: <http://semanticscience.org/resource/>
+PREFIX pubchemv: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+
+SELECT (COUNT(*) AS ?total)
+WHERE {
+SELECT distinct ?cid
+WHERE {
+    {
+      [ cheminf:CHEMINF_000477 ?cid ;
+        dcterms:source source:ChEBI ] .
+    } UNION {
+      [ cheminf:CHEMINF_000477 ?cid ;
+        dcterms:source source:ChEMBL ] .
+    } UNION {
+      ?cid obo:has-role pubchemv:FDAApprovedDrugs .
+    }
+}}

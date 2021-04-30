@@ -1,0 +1,18 @@
+PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/>
+PREFIX sio: <http://semanticscience.org/resource/>
+PREFIX obo: <http://purl.obolibrary.org/obo/>
+CONSTRUCT {?s ?p ?o}
+WHERE {
+  {
+    VALUES ?s {:CID313}
+    ?s ?p ?o .
+  }UNION{
+    VALUES ?o {:CID313}
+    VALUES ?p {
+      sio:CHEMINF_000477
+      obo:RO_0000057
+      sio:CHEMINF_000455
+      sio:is-attribute-of }
+    ?s ?p ?o .
+  }
+}
