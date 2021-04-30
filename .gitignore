@@ -1,0 +1,6 @@
+*.gz
+*.xz
+*.ttl
+*.txt
+FDAapproved-*/
+neighbour-*/
