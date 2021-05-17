@@ -3,6 +3,7 @@ PREFIX obo: <http://purl.obolibrary.org/obo/>
 PREFIX source: <http://rdf.ncbi.nlm.nih.gov/pubchem/source/>
 PREFIX cheminf: <http://semanticscience.org/resource/>
 PREFIX pubchemv: <http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#>
+PREFIX sio: <http://semanticscience.org/resource/>
 
 SELECT (COUNT(*) AS ?total)
 WHERE {
@@ -11,9 +12,15 @@ WHERE {
     {
       [ cheminf:CHEMINF_000477 ?cid ;
         dcterms:source source:ChEBI ] .
+#    } UNION {
+#      [ sio:is-attribute-of ?cid ;
+#        a sio:CHEMINF_000407 ] .
     } UNION {
       [ cheminf:CHEMINF_000477 ?cid ;
         dcterms:source source:ChEMBL ] .
+#    } UNION {
+#      [ sio:is-attribute-of ?cid ;
+#        a sio:CHEMINF_000412 ] .
     } UNION {
       ?cid obo:has-role pubchemv:FDAApprovedDrugs .
     }
