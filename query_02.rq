@@ -6,13 +6,14 @@ WHERE {
   {
     VALUES ?s {:CID313}
     ?s ?p ?o .
+    FILTER( ?p != sio:CHEMINF_000455 )
   }UNION{
     VALUES ?o {:CID313}
     VALUES ?p {
       sio:CHEMINF_000477
       obo:RO_0000057
-      sio:CHEMINF_000455
       sio:is-attribute-of }
     ?s ?p ?o .
   }
 }
+# not include (?:has_parent|CHEMINF_0004(?:55|61|62|80))

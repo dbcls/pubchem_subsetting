@@ -3,7 +3,8 @@ set -euo pipefail
 
 ENDPOINT=https://integbio.jp/rdf/pubchem/sparql
 WORK_DIR=/data/yayamamo/pubchem_fdaapproved_neighbours
-OUT_DIR=final_ntriples
+OUT_DIR=FDA_CHEBI-cids
+FINAL_DESTINATION=/data/togosite/rdf
 CURL=/usr/bin/curl
 PERL=/usr/bin/perl
 XARGS=/usr/bin/xargs
@@ -27,84 +28,123 @@ for i in $(seq 0 ${COUNT}); do
 done
 $SED -i.bak -e '/CID313"/d' FDA_CHEBI_cids_${TIMESTAMP}.txt # HClを除去（関連トリプル数が巨大なため別途特別対応している）
 echo "ATC分類情報を取得。"
-$CURL -sSH "Accept: text/turtle" -o skos_concept_${TIMESTAMP}.ttl --data-urlencode query="CONSTRUCT WHERE { ?attr a <http://www.w3.org/2004/02/skos/core#concept> ; ?p ?o .}" $ENDPOINT
+$CURL -sSH "Accept: application/n-triples" -o skos_concept_${TIMESTAMP}.nt --data-urlencode query="CONSTRUCT WHERE { ?attr a <http://www.w3.org/2004/02/skos/core#concept> ; ?p ?o .}" $ENDPOINT
 
-echo "取得したCIDについてDESCRIBEで関連するトリプルを取得。"
-if [ -e FDA_CHEBI-cids ]; then $FIND FDA_CHEBI-cids -type f -exec rm "{}" \; ; fi
-$CURL -sSH "Accept: text/turtle" -o FDA_CHEBI-cids/HydrochloricAcid.ttl --data-urlencode query@query_02.rq $ENDPOINT
-$PERL -ne 'chomp;m,([^/]+)"$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> DESCRIBE ?cid WHERE { VALUES ?cid {", join(" ", @vals), "}}\n";@vals=()}' FDA_CHEBI_cids_${TIMESTAMP}.txt | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids "{}"
-RES=$($FIND FDA_CHEBI-cids -maxdepth 1 -name *.err 2>/dev/null)
+echo "取得したCIDについて、それが主語もしくは目的語になるトリプルのうち、CID同士を結ばないものを取得。"
+if [ -e ${OUT_DIR} ]; then $FIND ${OUT_DIR} -type f -exec rm "{}" \; ; else mkdir ${OUT_DIR} ; fi
+$CURL -sSH "Accept: application/n-triples" -o ${OUT_DIR}/HydrochloricAcid.nt --data-urlencode query@query_02.rq $ENDPOINT
+$PERL ./construct_1.pl ./FDA_CHEBI_cids_${TIMESTAMP}.txt | xargs -0 -i -P10 ./get_describes.sh ${OUT_DIR} "{}" nt
+RES=$($FIND ${OUT_DIR} -maxdepth 1 -name *.err 2>/dev/null)
 if [ $? -ne 0 ]; then
   echo "$FIND の実行に失敗しました。"
 elif [ -z "$RES" ]; then
   echo "エラーなし。"
 else
   echo "エラーファイルがあります。"
-  ERROR_FILES=FDA_CHEBI-cids/*.err
-  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' FDA_CHEBI-cids/*.err | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids "{}"
-  $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/FDA_CHEBI-cids -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-  for fn in $ERROR_FILES; do rm $fn; done
-fi
-RES=$($FIND FDA_CHEBI-cids -maxdepth 1 -name *.err 2>/dev/null)
-if [ -z "$RES" ]; then
-  echo "エラーなし。"
-else
-  echo "エラーファイルがまだあります。更新スクリプトを中断します。"
-  exit
+  $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] );@args = ($query=~m,:CID\d+,g);$pat = join(" ",("_") x @args);for $uri ( @args ){$query =~ s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($_query = $query) =~ s/${pat}/${uris}/;print $_query,"\n";print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
+  $FIND ${OUT_DIR} -type f -name \*.nt -exec sh -c '(head -1 {} | grep -Pq "^(?:@prefix|<https?:)") || (echo {}; rm {})' \;
+  for fn in $RES; do rm $fn; done
+  RES=$($FIND ${OUT_DIR} -maxdepth 1 -name *.err 2>/dev/null)
+  if [ -z "$RES" ]; then
+    echo "エラーなし。"
+  else
+    echo "エラーファイルがまだあります。"
+    $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] );@args = ($query=~m,:CID\d+,g);$pat = join(" ",("_") x @args);for $uri ( @args ){$query =~ s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,20));($_query = $query) =~ s/${pat}/${uris}/;print $_query,"\n";print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
+    $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/${OUT_DIR} -type f -name \*.nt -exec sh -c '(head -1 {} | grep -Pq "^(?:@prefix|<https?:)") || (echo {}; rm {})' \;
+    for fn in $RES; do rm $fn; done
+    RES=$($FIND ${OUT_DIR} -maxdepth 1 -name *.err 2>/dev/null)
+    if [ -z "$RES" ]; then
+      echo "エラーなし。"
+    else
+      echo "エラーファイルがまだあります。更新スクリプトを中断します。"
+      exit
+    fi
+  fi
 fi
 
 echo "取得したCIDについて、has-attribute述語の目的語が主語になるトリプルを取得。"
-if [ -e FDA_CHEBI-cids-attrs ]; then $FIND FDA_CHEBI-cids-attrs -type f -exec rm "{}" \; ; fi
-$FIND FDA_CHEBI-cids -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; | $GREP has-attribute | cut -f3 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids-attrs "{}"
+if [ -e ${OUT_DIR}-attrs ]; then $FIND ${OUT_DIR}-attrs -type f -exec rm "{}" \; ; else mkdir ${OUT_DIR}-attrs ; fi
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP has-attribute | cut -f3 | $PERL -ne 'chomp;m,([^/]+)> \.$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+#$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP has-attribute | cut -f3 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
 
 echo "取得したCIDが目的語で、主語のURIにsynonymが含まれるトリプルを取得。"
-$FIND FDA_CHEBI-cids -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \;  | $GREP synonym | cut -f1 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids-attrs "{}"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP synonym | cut -f1 | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+#$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP synonym | cut -f1 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
 
-RES=$($FIND FDA_CHEBI-cids-attrs -maxdepth 1 -name *.err 2>/dev/null)
+RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
 if [ $? -ne 0 ]; then 
   echo "$FIND の実行に失敗しました。"
 elif [ -z "$RES" ]; then
   echo "エラーなし。"
 else
   echo "エラーファイルがあります。"
-  ERROR_FILES=FDA_CHEBI-cids-attrs/*.err
-  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' FDA_CHEBI-cids-attrs/*.err | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids-attrs "{}"
-  $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/FDA_CHEBI-cids-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-  for fn in $ERROR_FILES; do rm $fn; done
-fi
-RES=$($FIND FDA_CHEBI-cids-attrs -maxdepth 1 -name *.err 2>/dev/null)
-if [ -z "$RES" ]; then
-  echo "エラーなし。"
-else
-  echo "エラーファイルがまだあります。更新スクリプトを中断します。"
-  exit
-fi
-
-echo "取得したCIDと何らかの関係のあるCIDを示すトリプルを取得。"
-if [ -e FDA_CHEBI-cids-interrelations ]; then $FIND FDA_CHEBI-cids-interrelations -type f -exec rm "{}" \; ; fi
-$FIND FDA_CHEBI-cids -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP -e _000461 -e _000455 | cut -f3 -d ' ' | sort -u | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> DESCRIBE ?cid WHERE { VALUES ?cid {", join(" ", @vals), "}}\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids-interrelations "{}"
-$FIND FDA_CHEBI-cids -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP -e _000480 -e has_parent | cut -f1 -d ' ' | sort -u | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> DESCRIBE ?cid WHERE { VALUES ?cid {", join(" ", @vals), "}}\n";@vals=()}' | $XARGS -P10  -i ./get_describes.sh FDA_CHEBI-cids-interrelations "{}"
-RES=$($FIND FDA_CHEBI-cids-interrelations -maxdepth 1 -name *.err 2>/dev/null)
-if [ $? -ne 0 ]; then
-  echo "$FIND の実行に失敗しました。"
-elif [ -z "$RES" ]; then
-  echo "エラーなし。"
-else
-  echo "エラーファイルがあります。"
-  ERROR_FILES=FDA_CHEBI-cids-interrelations/*.err
-  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' FDA_CHEBI-cids-interrelations/*.err | $XARGS -P10 -i ./get_describes.sh FDA_CHEBI-cids-interrelations "{}"
-  $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/FDA_CHEBI-cids-interrelations -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-  for fn in $ERROR_FILES; do rm $fn; done
-fi
-RES=$($FIND FDA_CHEBI-cids-interrelations -maxdepth 1 -name *.err 2>/dev/null)
-if [ -z "$RES" ]; then
-  echo "エラーなし。"
-else
-  echo "エラーファイルがまだあります。更新スクリプトを中断します。"
-  exit
+  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+  $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+  for fn in $RES; do rm $fn; done
+  RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
+  if [ -z "$RES" ]; then
+    echo "エラーなし。"
+  else
+    echo "エラーファイルがまだあります。"
+    $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,20));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+    $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+    for fn in $RES; do rm $fn; done
+    RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
+    if [ -z "$RES" ]; then
+      echo "エラーなし。"
+    else
+      echo "エラーファイルがまだあります。"
+      $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,10));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+      $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+      for fn in $RES; do rm $fn; done
+      RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
+      if [ -z "$RES" ]; then
+        echo "エラーなし。"
+      else
+        echo "エラーファイルがまだあります。更新スクリプトを中断します。"
+        exit
+      fi
+    fi
+  fi
 fi
 
-if [ ! -e $OUT_DIR ]; then mkdir $OUT_DIR; else rm -rf $OUT_DIR; mkdir $OUT_DIR ; fi
-$FIND FDA_CHEBI-cids-interrelations/ FDA_CHEBI-cids-attrs/ FDA_CHEBI-cids/ skos_concept_${TIMESTAMP}.ttl -type f -name \*.ttl | $XARGS -P20 -i sh -c "F=\$(basename {} .ttl); $RAPPER -i turtle -o ntriples {} 2> /dev/null > ${OUT_DIR}/\${F}.nt"
-$FIND ${OUT_DIR} -type f -exec cat "{}" \; | sort --parallel=20 --compress-program=gzip -S12G | gzip -9c > FDA_CHEBI_subset_${TIMESTAMP}.nt.gz
-#$FIND ${WORK_DIR}/FDA_CHEBI-cids-interrelations/ ${WORK_DIR}/FDA_CHEBI-cids-attrs/ ${WORK_DIR}/FDA_CHEBI-cids/ ${WORK_DIR}/skos_concept_${TIMESTAMP}.ttl -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2>/dev/null | sort --parallel=20 --compress-program=gzip -S12G | gzip -9c > FDA_CHEBI_subset_${TIMESTAMP}.nt.gz
+#echo "取得したCIDと何らかの関係のあるCIDを示すトリプルを取得。"
+#if [ -e ${OUT_DIR}-interrelations ]; then $FIND ${OUT_DIR}-interrelations -type f -exec rm "{}" \; ; fi
+#$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP -e _000461 -e _000455 | cut -f3 -d ' ' | grep -v 'CID313>' | sort -u | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> DESCRIBE ?cid WHERE { VALUES ?cid {", join(" ", @vals), "}}\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-interrelations "{}"
+#$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP -e _000480 -e has_parent | cut -f1 -d ' ' | grep -v 'CID313>' | sort -u | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/> DESCRIBE ?cid WHERE { VALUES ?cid {", join(" ", @vals), "}}\n";@vals=()}' | $XARGS -P10  -i ./get_describes.sh ${OUT_DIR}-interrelations "{}"
+#RES=$($FIND ${OUT_DIR}-interrelations -maxdepth 1 -name *.err 2>/dev/null)
+#if [ $? -ne 0 ]; then
+#  echo "$FIND の実行に失敗しました。"
+#elif [ -z "$RES" ]; then
+#  echo "エラーなし。"
+#else
+#  echo "エラーファイルがあります。"
+#  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-interrelations/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-interrelations "{}"
+#  $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/${OUT_DIR}-interrelations -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+#  for fn in $RES; do rm $fn; done
+#  RES=$($FIND ${OUT_DIR}-interrelations -maxdepth 1 -name *.err 2>/dev/null)
+#  if [ -z "$RES" ]; then
+#    echo "エラーなし。"
+#  else
+#    echo "エラーファイルがあります。"
+#    $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,20));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-interrelations/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-interrelations "{}"
+#    $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/${OUT_DIR}-interrelations -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+#    for fn in $RES; do rm $fn; done
+#    RES=$($FIND ${OUT_DIR}-interrelations -maxdepth 1 -name *.err 2>/dev/null)
+#    if [ -z "$RES" ]; then
+#      echo "エラーなし。"
+#    else
+#      echo "エラーファイルがまだあります。更新スクリプトを中断します。"
+#      exit
+#    fi
+#  fi
+#fi
+
+#if [ ! -e $OUT_DIR ]; then mkdir $OUT_DIR; else rm -rf $OUT_DIR; mkdir $OUT_DIR ; fi
+mv skos_concept_${TIMESTAMP}.nt ${OUT_DIR}/
+$FIND ${OUT_DIR}-attrs -type f -name \*.ttl | $XARGS -P20 -i sh -c "F=\$(basename {} .ttl); $RAPPER -i turtle -o ntriples {} 2> /dev/null > ${OUT_DIR}/\${F}.nt"
+#$FIND ${OUT_DIR} -type f -exec cat "{}" \; | gzip -9c > ${FINAL_DESTINATION}/pubchem_subset_slim_${TIMESTAMP}.nt.gz
+$FIND ${OUT_DIR} -type f -exec cat "{}" \; | sort --parallel=20 --compress-program=gzip -S12G -u | gzip -9c > ${FINAL_DESTINATION}/pubchem_subset_slim_${TIMESTAMP}.nt.gz
+#$FIND ${OUT_DIR} -type f -exec sh -c "(cat {} | grep -vP '(?:has_parent|CHEMINF_0004(?:55|61|62|80))>\t')" \; | gzip -9c > ${FINAL_DESTINATION}/pubchem_subset_slim_${TIMESTAMP}.nt.gz
+#$FIND ${OUT_DIR}-interrelations/ ${OUT_DIR}-attrs/ FDA_CHEBI-cids/ skos_concept_${TIMESTAMP}.ttl -type f -name \*.ttl | $XARGS -P20 -i sh -c "F=\$(basename {} .ttl); $RAPPER -i turtle -o ntriples {} 2> /dev/null > ${OUT_DIR}/\${F}.nt"
+#$FIND ${WORK_DIR}/${OUT_DIR}-interrelations/ ${WORK_DIR}/${OUT_DIR}-attrs/ ${WORK_DIR}/FDA_CHEBI-cids/ ${WORK_DIR}/skos_concept_${TIMESTAMP}.ttl -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2>/dev/null | sort --parallel=20 --compress-program=gzip -S12G | gzip -9c > FDA_CHEBI_subset_${TIMESTAMP}.nt.gz
