@@ -1,6 +1,11 @@
 *.gz
 *.xz
 *.ttl
+*.nt
+*.owl
 *.txt
+*.bak
 FDAapproved-*/
 neighbour-*/
+FDA_CHEBI-*/
+FDA_ChEBI-*/
