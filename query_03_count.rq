@@ -1,0 +1,10 @@
+PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+SELECT (count(*) AS ?total) {
+SELECT DISTINCT ?pubchem
+FROM <http://rdf.ebi.ac.uk/dataset/chembl>
+WHERE {
+  [ a cco:SmallMolecule ;
+    cco:chemblId ?chembl_id ;
+    cco:moleculeXref ?pubchem ] .
+  ?pubchem a cco:PubchemRef .
+}}
