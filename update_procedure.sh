@@ -61,7 +61,7 @@ elif [ -z "$RES" ]; then
   echo "エラーなし。"
 else
   echo "エラーファイルがあります。"
-  $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] );@args = ($query=~m,:CID\d+,g);$pat = join(" ",("_") x @args);for $uri ( @args ){$query =~ s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($_query = $query) =~ s/${pat}/${uris}/;print $_query,"\n";print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
+  $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] ); @args = ($query=~m,:CID\d+,g); $pat = join(" ",("_") x @args); for $uri ( @args ){$query =~ s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,100)); ($_query = $query) =~ s/${pat}/${uris}/; print $_query,"\n"; print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
   $FIND ${OUT_DIR} -type f -name \*.nt -exec sh -c '(head -1 {} | grep -Pq "^(?:@prefix|<https?:)") || (echo {}; rm {})' \;
   for fn in $RES; do rm $fn; done
   RES=$($FIND ${OUT_DIR} -maxdepth 1 -name *.err 2>/dev/null)
@@ -69,7 +69,7 @@ else
     echo "エラーなし。"
   else
     echo "エラーファイルがまだあります。"
-    $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] );@args = ($query=~m,:CID\d+,g);$pat = join(" ",("_") x @args);for $uri ( @args ){$query =~ s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,20));($_query = $query) =~ s/${pat}/${uris}/;print $_query,"\n";print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
+    $FIND ${OUT_DIR} -maxdepth 1 -type f -name \*.err -exec $PERL -MFile::Slurp -e '$query=read_file( $ARGV[0] ); @args = ($query=~m,:CID\d+,g); $pat = join(" ",("_") x @args); for $uri ( @args ){$query =~ s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,20)); ($_query = $query) =~ s/${pat}/${uris}/; print $_query,"\n"; print "\0"}' "{}" \; | $XARGS -P10 -i -0 ./get_describes.sh ${OUT_DIR} "{}" nt
     $FIND /data/yayamamo/pubchem_fdaapproved_neighbours/${OUT_DIR} -type f -name \*.nt -exec sh -c '(head -1 {} | grep -Pq "^(?:@prefix|<https?:)") || (echo {}; rm {})' \;
     for fn in $RES; do rm $fn; done
     RES=$($FIND ${OUT_DIR} -maxdepth 1 -name *.err 2>/dev/null)
@@ -84,12 +84,18 @@ fi
 
 echo "取得したCIDについて、has-attribute述語の目的語が主語になるトリプルを取得。"
 if [ -e ${OUT_DIR}-attrs ]; then $FIND ${OUT_DIR}-attrs -type f -exec rm "{}" \; ; else mkdir ${OUT_DIR}-attrs ; fi
-$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP has-attribute | cut -f3 | $PERL -ne 'chomp;m,([^/]+)> \.$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP has-attribute | cut -f3 | $PERL -ne 'chomp; m,([^/]+)> \.$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
 #$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP has-attribute | cut -f3 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
 
 echo "取得したCIDが目的語で、主語のURIにsynonymが含まれるトリプルを取得。"
-$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP synonym | cut -f1 | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP synonym | cut -f1 | $PERL -ne 'chomp; m,([^/]+)>$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
 #$FIND ${OUT_DIR} -type f -name \*.ttl -exec $RAPPER -i turtle -o ntriples "{}" \; 2> /dev/null | $GREP synonym | cut -f1 -d ' ' | $PERL -ne 'chomp;m,([^/]+)>$,;push @vals, ":$1";if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n";@vals=()}' | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+
+chk_error() {
+  $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,$1)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+  $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+  for fn in $RES; do rm $fn; done
+}
 
 RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
 if [ $? -ne 0 ]; then 
@@ -98,25 +104,28 @@ elif [ -z "$RES" ]; then
   echo "エラーなし。"
 else
   echo "エラーファイルがあります。"
-  $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,100));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
-  $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-  for fn in $RES; do rm $fn; done
+  chk_error 100
+#  $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,100)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}" 
+#  $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+#  for fn in $RES; do rm $fn; done
   RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
   if [ -z "$RES" ]; then
     echo "エラーなし。"
   else
     echo "エラーファイルがまだあります。"
-    $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,20));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
-    $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-    for fn in $RES; do rm $fn; done
+    chk_error 20
+#    $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,20)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+#    $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+#    for fn in $RES; do rm $fn; done
     RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
     if [ -z "$RES" ]; then
       echo "エラーなし。"
     else
       echo "エラーファイルがまだあります。"
-      $PERL -ne 'chomp;@args=m,(:[^{}/ ]+),g;pop @args;$pat=join(" ",("_") x @args);for $uri ( @args ){s/${uri}/_/};while ( @args ){$uris = join(" ",splice(@args,0,10));($query = $_) =~ s/${pat}/${uris}/;print $query,"\n"}' ${OUT_DIR}-attrs/*.err | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
-      $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
-      for fn in $RES; do rm $fn; done
+      chk_error 10
+#      $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,10)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i ./get_describes.sh ${OUT_DIR}-attrs "{}"
+#      $FIND ${OUT_DIR}-attrs -type f -name \*.ttl -exec sh -c '(head -1 {} | grep -q "^@prefix") || (echo {}; rm {})' \;
+#      for fn in $RES; do rm $fn; done
       RES=$($FIND ${OUT_DIR}-attrs -maxdepth 1 -name *.err 2>/dev/null)
       if [ -z "$RES" ]; then
         echo "エラーなし。"
