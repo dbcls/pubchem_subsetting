@@ -4,7 +4,7 @@ declare -A ctype
 ctype["ttl"]="text/turtle"
 ctype["nt"]="application/n-triples"
 
-endpoint=https://integbio.jp/rdf/pubchem/sparql
+endpoint=https://rdfportal.org/pubchem/sparql
 directory=$1
 fn=$(uuidgen)
 ext=$3
