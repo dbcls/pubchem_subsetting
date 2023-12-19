@@ -96,11 +96,13 @@ else
 fi
 
 echo "取得したCIDについて、has-attribute述語の目的語が主語になるトリプルを取得。"
+HAS_ATTRIBUTE="SIO_000008"
 if [ -e ${OUT_DIR}-attrs ]; then $FIND ${OUT_DIR}-attrs -type f -exec rm "{}" \; ; else mkdir ${OUT_DIR}-attrs ; fi
-$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP has-attribute | cut -f3 | $PERL -ne 'chomp; m,([^/]+)> \.$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP $HAS_ATTRIBUTE | cut -f3 | $PERL -ne 'chomp; m,([^/]+)> \.$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
 
 echo "取得したCIDが目的語で、主語のURIにsynonymが含まれるトリプルを取得。"
-$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP synonym | cut -f1 | $PERL -ne 'chomp; m,([^/]+)>$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
+SYNONYM="SIO_000122"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP $SYNONYM | cut -f1 | $PERL -ne 'chomp; m,([^/]+)>$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
 
 chk_error() {
   $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,$1)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
