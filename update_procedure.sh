@@ -1,20 +1,16 @@
 #!/bin/sh
 set -euo pipefail
 
-SCRIPT_DIR=$(cd $(dirname $0); pwd)
-
-# グローバルに定義される変数を読み込む
-source $SCRIPT_DIR/../../common_settings.sh
-
-REMOTE_UPDATE_DATE=$1
-
+## 変更の可能性あり
 ENDPOINT=https://rdfportal.org/pubchem/sparql
 EBI_ENDPOINT=https://rdfportal.org/ebi/sparql
 WORK_DIR=/tmp/pubchem_fdaapproved_neighbours
+
+## 変更が不要
+FINAL_DESTINATION=$1
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUT_DIR=FDA_ChEBI-cids
 TIMESTAMP=$(date -I)
-FINAL_DESTINATION=${LOCALDIR}/pubchem/${REMOTE_UPDATE_DATE}
 CURL=/usr/bin/curl
 PERL=/usr/bin/perl
 XARGS=/usr/bin/xargs
@@ -101,8 +97,7 @@ if [ -e ${OUT_DIR}-attrs ]; then $FIND ${OUT_DIR}-attrs -type f -exec rm "{}" \;
 $FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP $HAS_ATTRIBUTE | cut -f3 | $PERL -ne 'chomp; m,([^/]+)> \.$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/descriptor/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
 
 echo "取得したCIDが目的語で、主語のURIにsynonymが含まれるトリプルを取得。"
-SYNONYM="SIO_000122"
-$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP $SYNONYM | cut -f1 | $PERL -ne 'chomp; m,([^/]+)>$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
+$FIND ${OUT_DIR} -type f -name \*.nt -exec cat "{}" \; | $GREP synonym | cut -f1 | $PERL -ne 'chomp; m,([^/]+)>$,; push @vals, ":$1"; if(@vals == 500){print "PREFIX : <http://rdf.ncbi.nlm.nih.gov/pubchem/synonym/> CONSTRUCT {?attr ?p ?o .} WHERE { VALUES ?attr {", join(" ", @vals), "} ?attr ?p ?o }\n"; @vals=()}' | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
 
 chk_error() {
   $FIND ${OUT_DIR}-attrs -maxdepth 1 -type f -name \*.err -exec $PERL -ne 'chomp; @args=m,(:[^{}/ ]+),g; pop @args; $pat=join(" ",("_") x @args); for $uri ( @args ){s/${uri}/_/}; while ( @args ){$uris = join(" ",splice(@args,0,$1)); ($query = $_) =~ s/${pat}/${uris}/; print $query,"\n"}' "{}" \; | $XARGS -P10 -i $SCRIPT_DIR/get_describes.sh ${OUT_DIR}-attrs "{}"
