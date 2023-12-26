@@ -1,13 +1,20 @@
 #!/bin/sh
 set -euo pipefail
 
+# 引数の数をチェック
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 OUTDIR"  
+    exit 1
+fi
+
+FINAL_DESTINATION=$1
+
 ## 変更の可能性あり
 ENDPOINT=https://rdfportal.org/pubchem/sparql
 EBI_ENDPOINT=https://rdfportal.org/ebi/sparql
 WORK_DIR=/tmp/pubchem_fdaapproved_neighbours
 
 ## 変更が不要
-FINAL_DESTINATION=$1
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 OUT_DIR=FDA_ChEBI-cids
 TIMESTAMP=$(date -I)
