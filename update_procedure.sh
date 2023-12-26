@@ -136,6 +136,9 @@ else
   fi
 fi
 
+echo "skos_concept_${TIMESTAMP}.nt を ${OUT_DIR}に移動"
 mv skos_concept_${TIMESTAMP}.nt ${OUT_DIR}/
+echo "rapperを実行する"
 $FIND ${OUT_DIR}-attrs -type f -name \*.ttl | $XARGS -P20 -i sh -c "F=\$(basename {} .ttl); $RAPPER -i turtle -o ntriples {} 2> /dev/null > ${OUT_DIR}/\${F}.nt"
+echo "最終ファイルを作成する"
 $FIND ${OUT_DIR} -type f -exec cat "{}" \; | sort --parallel=20 --compress-program=gzip -S12G -u | gzip -9c > ${FINAL_DESTINATION}/pubchem_subset_slim_${TIMESTAMP}.nt.gz
